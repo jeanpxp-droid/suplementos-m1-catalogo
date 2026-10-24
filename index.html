@@ -240,7 +240,7 @@ document.getElementById("year").textContent = new Date().getFullYear();
      controls.append(minus,qty,plus,remove);left.append(title,detail,controls);
      const subtotal=document.createElement('strong');subtotal.textContent=money(item.price*item.quantity);line.append(left,subtotal);itemsEl.append(line);
    });
-   backdrop.querySelector('#m1-cart-count').textContent=count;fab.querySelector('span').textContent=count;
+   fab.querySelector('#m1-cart-count').textContent=count;
    backdrop.querySelector('#m1-cart-total').textContent=money(total);
    if(!count){itemsEl.innerHTML='<p style="color:#bbb">Seu carrinho está vazio. Adicione produtos com preço disponível.</p>'}
    backdrop.querySelector('#m1-checkout').disabled=count===0;
