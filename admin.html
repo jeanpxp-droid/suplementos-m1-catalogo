@@ -1,5 +1,103 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#d71920"><title>Administração | Suplementos M1</title><style>*{box-sizing:border-box}body{margin:0;background:#f5f5f5;color:#191919;font:16px Arial,sans-serif}.wrap{max-width:760px;margin:0 auto;padding:22px}.panel{background:#fff;border:1px solid #e6e6e6;border-radius:16px;padding:20px;margin:14px 0}h1{font-size:1.6rem;margin:0 0 8px}p{line-height:1.5;color:#555}label{display:block;font-weight:700;margin:12px 0 6px}input{width:100%;padding:13px;border:1px solid #ccc;border-radius:9px;font-size:16px}button{background:#d71920;color:#fff;border:0;border-radius:9px;padding:13px 16px;font-weight:700;font-size:15px;cursor:pointer;margin:8px 6px 0 0}.secondary{background:#fff;color:#d71920;border:1px solid #d71920}.item{display:grid;grid-template-columns:1fr 130px;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #eee}.item:last-child{border:0}.name{font-weight:700}.id{font-size:11px;color:#777;overflow-wrap:anywhere}.status{padding:10px;border-radius:8px;background:#f6f6f6;white-space:pre-wrap}.hidden{display:none}@media(max-width:500px){.wrap{padding:14px}.panel{padding:15px}.item{grid-template-columns:1fr 110px}}</style></head><body><main class="wrap"><div class="panel"><h1>Suplementos M1 — Administração</h1><p>Edite os preços pelo celular. Para segurança, a área exige login de administrador. Esta tela só funcionará depois de configurar o projeto Supabase descrito no arquivo <b>LEIA-ME-ADMIN.txt</b>.</p><label for="email">E-mail administrador</label><input id="email" type="email" autocomplete="username" placeholder="seu e-mail"><label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" placeholder="Sua senha"><button id="login">Entrar</button><button id="logout" class="secondary hidden">Sair</button><div id="status" class="status" role="status">Aguardando configuração.</div></div><section id="editor" class="panel hidden"><h2>Preços dos produtos</h2><p>Informe o valor em reais. Use 0 ou deixe vazio para não exibir preço.</p><div id="list"></div><button id="save">Salvar preços</button></section></main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>
-const SUPABASE_URL='https://qtgavecqtcqchevfwuzl.supabase.co';const SUPABASE_ANON_KEY='sb_publishable_K-f7UN-mbFEHUW8MBjOF6A_8FoThUoS';let db=null;let products=[];const $=id=>document.getElementById(id);function status(t){$('status').textContent=t}function configured(){return window.supabase&&!SUPABASE_URL.startsWith('COLE_')&&!SUPABASE_ANON_KEY.startsWith('COLE_')}async function getProducts(){const response=await fetch('./index.html',{cache:'no-store'});if(!response.ok)throw new Error('Não consegui abrir o catálogo (index.html).');const html=await response.text();const doc=new DOMParser().parseFromString(html,'text/html');return [...doc.querySelectorAll('[data-price-id]')].map(el=>{const card=el.closest('.product')||el.closest('article');const title=card?.querySelector('h3')?.textContent?.trim()||'Produto';const details=[...(card?.querySelectorAll('.product-info > p')||[])].map(p=>p.textContent.trim()).filter(Boolean).slice(0,1).join('');const brand=card?.querySelector('.product-label')?.textContent?.trim()||'';return{id:el.dataset.priceId,name:[brand,title,details].filter(Boolean).join(' · ')}})}
-$('login').onclick=async()=>{if(!configured()){status('Falta configurar a URL e a chave pública do Supabase. Veja LEIA-ME-ADMIN.txt.');return}db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);const {data,error}=await db.auth.signInWithPassword({email:$('email').value,password:$('password').value});if(error){status('Não foi possível entrar: '+error.message);return}await loadPrices()};async function loadPrices(){const {data:sessionData}=await db.auth.getSession();if(!sessionData.session){status('Faça login para continuar.');return}const {data,error}=await db.from('catalog_prices').select('product_id,price');if(error){status('Erro ao carregar preços: '+error.message);return}const map=new Map((data||[]).map(x=>[x.product_id,x.price]));try{products=await getProducts()}catch(e){status('Erro ao carregar produtos: '+e.message);return}$('list').innerHTML='';products.forEach(p=>{const row=document.createElement('div');row.className='item';const name=document.createElement('div');name.innerHTML='<div class="name"></div><div class="id"></div>';name.querySelector('.name').textContent=p.name;name.querySelector('.id').textContent=p.id;const input=document.createElement('input');input.type='number';input.min='0';input.step='0.01';input.inputMode='decimal';input.placeholder='R$';input.dataset.id=p.id;input.value=map.get(p.id)??'';row.append(name,input);$('list').append(row)});$('editor').classList.remove('hidden');$('logout').classList.remove('hidden');status('Login realizado. Altere os valores e toque em Salvar preços.')}
-$('save').onclick=async()=>{if(!db){status('Entre novamente para salvar os preços.');return}const inputs=[...$('list').querySelectorAll('input')];const rows=inputs.filter(i=>i.value.trim()!==''&&Number.isFinite(Number(i.value))&&Number(i.value)>0).map(i=>({product_id:i.dataset.id,price:Number(Number(i.value).toFixed(2))}));const removeIds=inputs.filter(i=>i.value.trim()===''||!Number.isFinite(Number(i.value))||Number(i.value)<=0).map(i=>i.dataset.id);if(rows.length){const {error}=await db.from('catalog_prices').upsert(rows,{onConflict:'product_id'});if(error){status('Erro ao salvar: '+error.message);return}}if(removeIds.length){const {error}=await db.from('catalog_prices').delete().in('product_id',removeIds);if(error){status('Os preços foram atualizados, mas não foi possível remover os campos vazios/zerados: '+error.message);return}}status('Preços salvos. Atualize o catálogo público para conferir os valores.')};$('logout').onclick=async()=>{if(db)await db.auth.signOut();$('editor').classList.add('hidden');$('logout').classList.add('hidden');status('Você saiu da administração.')};
-</script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#d71920">
+<title>Administração | Suplementos M1</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f5f5f5;color:#191919;font:16px Arial,sans-serif}.wrap{max-width:820px;margin:0 auto;padding:22px}.panel{background:#fff;border:1px solid #e6e6e6;border-radius:16px;padding:20px;margin:14px 0}h1{font-size:1.6rem;margin:0 0 8px}h2{font-size:1.2rem;margin:0 0 8px}p{line-height:1.5;color:#555}label{display:block;font-weight:700;margin:12px 0 6px}input{width:100%;padding:12px;border:1px solid #ccc;border-radius:9px;font-size:16px}button{background:#d71920;color:#fff;border:0;border-radius:9px;padding:13px 16px;font-weight:700;font-size:15px;cursor:pointer;margin:8px 6px 0 0}.secondary{background:#fff;color:#d71920;border:1px solid #d71920}.item{display:grid;grid-template-columns:minmax(0,1fr) 105px 125px;gap:12px;align-items:center;padding:13px 0;border-bottom:1px solid #eee}.item:last-child{border:0}.name{font-weight:700}.id{font-size:11px;color:#777;overflow-wrap:anywhere;margin-top:4px}.field-label{font-size:12px;color:#666;margin-bottom:5px}.status{padding:10px;border-radius:8px;background:#f6f6f6;white-space:pre-wrap;margin-top:12px}.hidden{display:none}.savebar{position:sticky;bottom:0;background:#fff;padding:12px 0;border-top:1px solid #eee;margin-top:14px}.help{font-size:13px;color:#666}@media(max-width:560px){.wrap{padding:12px}.panel{padding:14px}.item{grid-template-columns:minmax(0,1fr) 90px 100px;gap:8px}.item input{padding:10px 7px}.item .name{font-size:14px}.id{font-size:10px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="panel">
+    <h1>Suplementos M1 — Administração</h1>
+    <p>Altere o preço e a quantidade em estoque de cada produto. O cliente verá apenas se está disponível ou esgotado — nunca a quantidade exata.</p>
+    <label for="email">E-mail administrador</label><input id="email" type="email" autocomplete="username" placeholder="seu e-mail">
+    <label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" placeholder="Sua senha">
+    <button id="login" type="button">Entrar</button><button id="logout" class="secondary hidden" type="button">Sair</button>
+    <div id="status" class="status" role="status">Aguardando login.</div>
+  </div>
+  <section id="editor" class="panel hidden">
+    <h2>Preços e estoque</h2>
+    <p class="help">Preço vazio ou 0 = sem preço publicado. Estoque aceita apenas números inteiros a partir de zero. Produtos com estoque 0 aparecem como esgotados e não podem ser adicionados ao carrinho.</p>
+    <div class="item" style="font-size:12px;font-weight:700;color:#555"><div>Produto</div><div>Preço (R$)</div><div>Estoque (un.)</div></div>
+    <div id="list"></div>
+    <div class="savebar"><button id="save" type="button">Salvar preços e estoque</button></div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://qtgavecqtcqchevfwuzl.supabase.co';
+const SUPABASE_ANON_KEY='sb_publishable_K-f7UN-mbFEHUW8MBjOF6A_8FoThUoS';
+let db=null,products=[];
+const $=id=>document.getElementById(id);
+function status(t){$('status').textContent=t}
+async function getProducts(){
+ const response=await fetch('./index.html',{cache:'no-store'});
+ if(!response.ok)throw new Error('Não consegui abrir o catálogo (index.html).');
+ const html=await response.text(),doc=new DOMParser().parseFromString(html,'text/html');
+ return [...doc.querySelectorAll('[data-price-id]')].map(el=>{
+  const card=el.closest('.product')||el.closest('article');
+  const title=card?.querySelector('h3')?.textContent?.trim()||'Produto';
+  const details=[...(card?.querySelectorAll('.product-info > p')||[])].map(p=>p.textContent.trim()).filter(Boolean).slice(0,1).join('');
+  const brand=card?.querySelector('.product-label')?.textContent?.trim()||'';
+  return {id:el.dataset.priceId,name:[brand,title,details].filter(Boolean).join(' · ')};
+ }).filter((p,i,a)=>p.id&&a.findIndex(x=>x.id===p.id)===i);
+}
+$('login').onclick=async()=>{
+ if(!window.supabase){status('Não foi possível carregar a biblioteca Supabase. Verifique sua conexão.');return}
+ db=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+ const {error}=await db.auth.signInWithPassword({email:$('email').value.trim(),password:$('password').value});
+ if(error){status('Não foi possível entrar: '+error.message);return}
+ await loadData();
+};
+async function loadData(){
+ const {data:sessionData,error:sessionError}=await db.auth.getSession();
+ if(sessionError||!sessionData.session){status('Faça login para continuar.');return}
+ const {data,error}=await db.from('catalog_prices').select('product_id,price,stock_quantity');
+ if(error){status('Erro ao carregar preços e estoque: '+error.message+' — confirme se a coluna stock_quantity existe na tabela catalog_prices.');return}
+ const map=new Map((data||[]).map(x=>[x.product_id,x]));
+ try{products=await getProducts()}catch(e){status('Erro ao carregar produtos: '+e.message);return}
+ $('list').innerHTML='';
+ products.forEach(p=>{
+  const saved=map.get(p.id)||{};
+  const row=document.createElement('div');row.className='item';
+  const name=document.createElement('div');name.innerHTML='<div class="name"></div><div class="id"></div>';
+  name.querySelector('.name').textContent=p.name;name.querySelector('.id').textContent=p.id;
+  const priceWrap=document.createElement('div'),stockWrap=document.createElement('div');
+  const priceLabel=document.createElement('div');priceLabel.className='field-label';priceLabel.textContent='Preço (R$)';
+  const price=document.createElement('input');price.type='number';price.min='0';price.step='0.01';price.inputMode='decimal';price.placeholder='0,00';price.dataset.priceId=p.id;price.value=saved.price==null?'':saved.price;
+  const stockLabel=document.createElement('div');stockLabel.className='field-label';stockLabel.textContent='Unidades';
+  const stock=document.createElement('input');stock.type='number';stock.min='0';stock.step='1';stock.inputMode='numeric';stock.placeholder='0';stock.dataset.stockId=p.id;stock.value=saved.stock_quantity==null?'0':saved.stock_quantity;
+  priceWrap.append(priceLabel,price);stockWrap.append(stockLabel,stock);row.append(name,priceWrap,stockWrap);$('list').append(row);
+ });
+ $('editor').classList.remove('hidden');$('logout').classList.remove('hidden');
+ status('Login realizado. Altere os campos e toque em “Salvar preços e estoque”.');
+}
+$('save').onclick=async()=>{
+ if(!db){status('Entre novamente para salvar.');return}
+ const {data:sessionData}=await db.auth.getSession();
+ if(!sessionData.session){status('Sua sessão expirou. Entre novamente.');return}
+ const priceInputs=[...$('list').querySelectorAll('[data-price-id]')],stockInputs=[...$('list').querySelectorAll('[data-stock-id]')];
+ const stockMap=new Map(stockInputs.map(i=>[i.dataset.stockId,i]));
+ const rows=[];
+ for(const p of products){
+  const pi=priceInputs.find(i=>i.dataset.priceId===p.id),si=stockMap.get(p.id);
+  const priceText=pi?.value.trim()??'',stockText=si?.value.trim()??'';
+  const price=priceText===''?null:Number(priceText),stock=Number(stockText);
+  if(price!==null&&(!Number.isFinite(price)||price<0)){status('Preço inválido no produto: '+p.name);pi?.focus();return}
+  if(stockText===''||!Number.isInteger(stock)||stock<0){status('Informe um estoque inteiro igual ou maior que zero para: '+p.name);si?.focus();return}
+  rows.push({product_id:p.id,price:price===null?null:Number(price.toFixed(2)),stock_quantity:stock});
+ }
+ $('save').disabled=true;status('Salvando preços e estoque…');
+ const {error}=await db.from('catalog_prices').upsert(rows,{onConflict:'product_id'});
+ $('save').disabled=false;
+ if(error){status('Erro ao salvar: '+error.message);return}
+ status('Preços e estoque salvos com sucesso. O catálogo público será atualizado ao recarregar a página.');
+};
+$('logout').onclick=async()=>{if(db)await db.auth.signOut();$('editor').classList.add('hidden');$('logout').classList.add('hidden');status('Você saiu da administração.')};
+</script>
+</body>
+</html>
