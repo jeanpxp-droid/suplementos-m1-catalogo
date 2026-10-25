@@ -140,7 +140,7 @@ nav a:hover{color:#ff323b}
       <article class="product"><img src="images/7a549ac7bf3b15414e535306046f7e6e-6sqcnza4fa.jpg" alt="V9 Pump"><div class="product-info"><span class="product-label">V9</span><h3>V9 Pump</h3><p>Suplemento em pó</p><p class="product-description">Pré-treino para incluir na sua rotina antes do exercício. Consulte os ingredientes, a cafeína e as orientações de uso no rótulo.</p><div class="catalog-price" data-price-id="v9-pump-suplemento-41" hidden></div><a data-product="V9 Pump suplemento" href="#">Consultar no WhatsApp ↗</a></div></article>
       <article class="product"><img src="images/ec535f9be2505cec3a5f3e79c46889f1-wznclhm9ap.jpg" alt="V9 Pump"><div class="product-info"><span class="product-label">V9</span><h3>V9 Pump</h3><p>Suplemento em pó</p><p class="product-description">Pré-treino para incluir na sua rotina antes do exercício. Consulte os ingredientes, a cafeína e as orientações de uso no rótulo.</p><div class="catalog-price" data-price-id="v9-pump-suplemento-42" hidden></div><a data-product="V9 Pump suplemento" href="#">Consultar no WhatsApp ↗</a></div></article>
     </div>
-    <p class="note">Preços e estoque não são exibidos nesta página. Consulte pelo WhatsApp antes de se deslocar.</p>
+    <p class="note">A disponibilidade é atualizada automaticamente. Produtos esgotados não podem ser adicionados ao carrinho.</p>
   </div>
 </section>
 <section id="bebidas-drinks">
@@ -175,11 +175,19 @@ document.getElementById("year").textContent = new Date().getFullYear();
  const KEY='sb_publishable_K-f7UN-mbFEHUW8MBjOF6A_8FoThUoS';
  if(!window.supabase || URL.startsWith('COLE_') || KEY.startsWith('COLE_')) return;
  const client=window.supabase.createClient(URL,KEY);
- const {data,error}=await client.from('catalog_prices').select('product_id,price');
- if(error||!data) return;
+ const {data,error}=await client.from('catalog_prices').select('product_id,price,stock_quantity');
+ if(error||!data) { window.M1_STOCK_READY=false; return; }
  const prices=new Map(data.map(x=>[x.product_id,Number(x.price)]));
+ window.M1_STOCK=new Map(data.map(x=>[x.product_id,Math.max(0,Number(x.stock_quantity)||0)]));
+ window.M1_STOCK_READY=true;
  document.querySelectorAll('[data-price-id]').forEach(el=>{
-   const id=el.dataset.priceId; if(!prices.has(id)) return;
+   const id=el.dataset.priceId;
+   const qty=window.M1_STOCK.get(id)||0;
+   let badge=el.parentElement.querySelector('.m1-stock-status');
+   if(!badge){badge=document.createElement('div');badge.className='m1-stock-status';el.insertAdjacentElement('afterend',badge)}
+   badge.textContent=qty>0?'Disponível':'Esgotado';
+   badge.style.cssText='font-size:.82rem;font-weight:700;margin:6px 0;color:'+(qty>0?'#248a45':'#d71920');
+   if(!prices.has(id)||prices.get(id)<=0) return;
    const value=prices.get(id).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
    el.textContent=value; el.hidden=false; el.style.cssText='font-weight:800;font-size:1.15rem;color:#d71920;margin:8px 0';
  });
@@ -190,6 +198,7 @@ document.getElementById("year").textContent = new Date().getFullYear();
 /* Carrinho M1 — mantém a identidade visual original */
 .m1-add-cart{display:block;width:100%;margin-top:10px;padding:11px 14px;border:0;border-radius:8px;background:#d71920;color:#fff;font-weight:800;font-size:14px;cursor:pointer}
 .m1-add-cart:active,.m1-cart-fab:active{transform:scale(.98)}
+.m1-add-cart:disabled{opacity:.55;cursor:not-allowed;background:#777}
 .m1-cart-fab{position:fixed;z-index:9998;right:18px;bottom:18px;border:0;border-radius:999px;background:#d71920;color:#fff;padding:15px 20px;font-weight:800;box-shadow:0 8px 28px #0006;cursor:pointer}
 .m1-cart-fab span{display:inline-flex;align-items:center;justify-content:center;margin-left:8px;min-width:24px;height:24px;border-radius:50%;background:#fff;color:#d71920}
 .m1-cart-backdrop{display:none;position:fixed;inset:0;z-index:9999;background:#000a;align-items:flex-end;justify-content:center}
@@ -217,6 +226,8 @@ document.getElementById("year").textContent = new Date().getFullYear();
  const PUBLIC_KEY='sb_publishable_K-f7UN-mbFEHUW8MBjOF6A_8FoThUoS';
  const PAYMENT_ENDPOINT=SUPABASE_URL+'/functions/v1/criar-pagamento';
  const cart=new Map();
+ window.M1_STOCK_READY=window.M1_STOCK_READY||false;
+ window.M1_STOCK=window.M1_STOCK||new Map();
  const money=n=>Number(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
  const parsePrice=el=>{const s=(el?.textContent||'').replace(/\s/g,'').replace(/R\$/g,'').replace(/\./g,'').replace(',','.');const n=Number(s);return Number.isFinite(n)?n:0};
  const fab=document.createElement('button');fab.className='m1-cart-fab';fab.type='button';fab.innerHTML='🛒 Carrinho <span id="m1-cart-count">0</span>';
@@ -245,7 +256,7 @@ document.getElementById("year").textContent = new Date().getFullYear();
    if(!count){itemsEl.innerHTML='<p style="color:#bbb">Seu carrinho está vazio. Adicione produtos com preço disponível.</p>'}
    backdrop.querySelector('#m1-checkout').disabled=count===0;
  }
- function changeQty(id,delta){const item=cart.get(id);if(!item)return;item.quantity+=delta;if(item.quantity<1)cart.delete(id);else if(item.quantity>10)item.quantity=10;renderCart()}
+ function changeQty(id,delta){const item=cart.get(id);if(!item)return;const stock=Math.max(0,Number(window.M1_STOCK.get(id))||0);if(stock<1){cart.delete(id);backdrop.querySelector('#m1-cart-message').textContent='Produto esgotado e removido do carrinho.';renderCart();return}item.quantity+=delta;if(item.quantity<1)cart.delete(id);else if(item.quantity>Math.min(10,stock)){item.quantity=Math.min(10,stock);backdrop.querySelector('#m1-cart-message').textContent='Não há mais unidades disponíveis desse produto.'}renderCart()}
  function addButton(priceEl){
    if(!priceEl||priceEl.dataset.cartReady==='1')return;
    const price=parsePrice(priceEl);if(price<=0)return;
@@ -253,8 +264,17 @@ document.getElementById("year").textContent = new Date().getFullYear();
    const link=info.querySelector('[data-product]');if(!link)return;
    priceEl.dataset.cartReady='1';
    const id=priceEl.dataset.priceId;const name=link.dataset.product||info.querySelector('h3')?.textContent||id;
-   const btn=document.createElement('button');btn.type='button';btn.className='m1-add-cart';btn.textContent='Adicionar ao carrinho';
-   btn.addEventListener('click',()=>{const existing=cart.get(id);if(existing){existing.quantity=Math.min(10,existing.quantity+1)}else{cart.set(id,{product_id:id,name,price,quantity:1})}renderCart();btn.textContent='Adicionado ✓';setTimeout(()=>btn.textContent='Adicionar ao carrinho',1100)});
+   const btn=document.createElement('button');btn.type='button';btn.className='m1-add-cart';
+   const stockQty=()=>Math.max(0,Number(window.M1_STOCK.get(id))||0);
+   const refreshButton=()=>{btn.disabled=!window.M1_STOCK_READY||stockQty()<=0;btn.textContent=!window.M1_STOCK_READY?'Carregando estoque…':(stockQty()<=0?'Esgotado':'Adicionar ao carrinho');btn.style.opacity=btn.disabled?'.55':'1';btn.style.cursor=btn.disabled?'not-allowed':'pointer'};
+   refreshButton();
+   btn.addEventListener('click',()=>{
+     if(!window.M1_STOCK_READY||stockQty()<=0){refreshButton();return}
+     const existing=cart.get(id);
+     if(existing){if(existing.quantity>=Math.min(10,stockQty())){backdrop.querySelector('#m1-cart-message').textContent='Não há mais unidades disponíveis desse produto.';return}existing.quantity++}
+     else{cart.set(id,{product_id:id,name,price,quantity:1})}
+     renderCart();btn.textContent='Adicionado ✓';setTimeout(refreshButton,1100);
+   });
    link.insertAdjacentElement('afterend',btn);
  }
  function scan(){document.querySelectorAll('[data-price-id]').forEach(addButton)}
